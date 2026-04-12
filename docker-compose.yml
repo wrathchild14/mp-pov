@@ -1,0 +1,22 @@
+version: '3'
+
+services:
+  caddy:
+    image: caddy:latest
+    ports:
+      - "80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./site:/srv
+    depends_on:
+      - nextcloud
+
+  nextcloud:
+    image: nextcloud:latest
+    ports:
+      - "8080:80"
+    volumes:
+      - nextcloud_data:/var/www/html
+
+volumes:
+  nextcloud_data:
