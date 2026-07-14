@@ -1,22 +1,52 @@
-version: '3'
+version: "3.9"
 
 services:
   caddy:
     image: caddy:latest
+    restart: unless-stopped
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
-      - ./site:/srv
+      - caddy_data:/data
+      - caddy_config:/config
     depends_on:
+      - nextjs
       - nextcloud
 
+  nextjs:
+    build: ./nextjs
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+
   nextcloud:
-    image: nextcloud:latest
-    ports:
-      - "8080:80"
+    image: nextcloud:apache
+    restart: unless-stopped
+    environment:
+      - MYSQL_HOST=db
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - MYSQL_PASSWORD=nextcloudpassword
     volumes:
       - nextcloud_data:/var/www/html
+    depends_on:
+      - db
+
+  db:
+    image: mariadb:10.6
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=rootpassword
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - MYSQL_PASSWORD=nextcloudpassword
+    volumes:
+      - db_data:/var/lib/mysql
 
 volumes:
   nextcloud_data:
+  db_data:
+  caddy_data:
+  caddy_config:

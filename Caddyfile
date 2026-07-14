@@ -1,8 +1,10 @@
 :80 {
-    root * /srv
-    file_server
-
-    handle_path /cloud* {
+    handle /cloud* {
+        uri strip_prefix /cloud
         reverse_proxy nextcloud:80
+    }
+
+    handle {
+        reverse_proxy nextjs:3000
     }
 }
