@@ -1,10 +1,13 @@
-:80 {
-    handle /cloud* {
-        uri strip_prefix /cloud
-        reverse_proxy nextcloud:80
-    }
+{$SITE_ADDRESS} {
+	encode zstd gzip
 
-    handle {
-        reverse_proxy nextjs:3000
-    }
+	redir /nextcloud /nextcloud/ 308
+
+	handle_path /nextcloud/* {
+		reverse_proxy nextcloud:80
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
 }

@@ -1,52 +1,93 @@
-version: "3.9"
+name: photographer-platform
 
 services:
-  caddy:
-    image: caddy:latest
+  proxy:
+    image: caddy:2.10.0-alpine
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - nextjs
+      - web
       - nextcloud
 
-  nextjs:
-    build: ./nextjs
+  web:
+    build:
+      context: ./nextjs
     restart: unless-stopped
     environment:
-      - NODE_ENV=production
+      NODE_ENV: production
 
   nextcloud:
-    image: nextcloud:apache
+    image: nextcloud:31.0.7-apache
     restart: unless-stopped
-    environment:
-      - MYSQL_HOST=db
-      - MYSQL_DATABASE=nextcloud
-      - MYSQL_USER=nextcloud
-      - MYSQL_PASSWORD=nextcloudpassword
+    environment: &nextcloud-environment
+      MYSQL_HOST: database
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-nextcloud}
+      MYSQL_USER: ${MYSQL_USER:-nextcloud}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
+      REDIS_HOST: redis
+      NEXTCLOUD_ADMIN_USER: ${NEXTCLOUD_ADMIN_USER:-admin}
+      NEXTCLOUD_ADMIN_PASSWORD: ${NEXTCLOUD_ADMIN_PASSWORD:?Set NEXTCLOUD_ADMIN_PASSWORD in .env}
+      NEXTCLOUD_TRUSTED_DOMAINS: ${NEXTCLOUD_TRUSTED_DOMAINS:-localhost}
+      TRUSTED_PROXIES: proxy
+      OVERWRITEPROTOCOL: ${OVERWRITEPROTOCOL:-http}
+      OVERWRITEHOST: ${NEXTCLOUD_TRUSTED_DOMAINS:-localhost}
+      OVERWRITEWEBROOT: /nextcloud
+      OVERWRITECLIURL: ${PUBLIC_URL:-http://localhost}/nextcloud
+      PHP_UPLOAD_LIMIT: ${PHP_UPLOAD_LIMIT:-10G}
+      PHP_MEMORY_LIMIT: ${PHP_MEMORY_LIMIT:-512M}
     volumes:
       - nextcloud_data:/var/www/html
     depends_on:
-      - db
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
-  db:
-    image: mariadb:10.6
+  nextcloud-cron:
+    image: nextcloud:31.0.7-apache
     restart: unless-stopped
-    environment:
-      - MYSQL_ROOT_PASSWORD=rootpassword
-      - MYSQL_DATABASE=nextcloud
-      - MYSQL_USER=nextcloud
-      - MYSQL_PASSWORD=nextcloudpassword
+    entrypoint: /cron.sh
+    environment: *nextcloud-environment
     volumes:
-      - db_data:/var/lib/mysql
+      - nextcloud_data:/var/www/html
+    depends_on:
+      - nextcloud
+
+  database:
+    image: mariadb:11.4.7
+    restart: unless-stopped
+    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-nextcloud}
+      MYSQL_USER: ${MYSQL_USER:-nextcloud}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
+    volumes:
+      - database_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8.0.3-alpine
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
 
 volumes:
-  nextcloud_data:
-  db_data:
   caddy_data:
   caddy_config:
+  nextcloud_data:
+  database_data:
+  redis_data:
